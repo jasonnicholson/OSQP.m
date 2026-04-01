@@ -176,23 +176,25 @@ classdef OSQP < handle
       % ---- Check convexity of P ----
       % P must be PSD; if P has a negative eigenvalue, flag as non-convex.
       % We check P itself (not P+sigma*I) so sigma does not mask indefiniteness.
+      % Use Cholesky as a fast PSD proxy: chol(P + eps*I) succeeds iff all
+      % eigenvalues of P are > -eps, which is far cheaper than eigs.
       Pfull = obj.P_triu + obj.P_triu' - diag(diag(obj.P_triu));
       if obj.n > 0 && nnz(Pfull) > 0
-        d_min = eigs(Pfull, 1, 'smallestreal', ...
-          struct('Tolerance', 1e-6, 'MaxIterations', 200));
-        if d_min < -1e-7
-          % Store non-convex flag but throw only when sigma is too small.
-          % For a small sigma the KKT matrix would be indefinite/singular.
+        thresh = 1e-7;
+        try
+          chol(Pfull + thresh * speye(obj.n), 'lower');
+          obj.non_convex = false;
+        catch
+          % At least one eigenvalue of P < -1e-7 → non-convex.
+          % Check whether P + sigma*I is still PSD (sigma may regularise it).
           Psig = Pfull + obj.settings.sigma * speye(obj.n);
-          d_sig = eigs(Psig, 1, 'smallestreal', ...
-            struct('Tolerance', 1e-6, 'MaxIterations', 200));
-          if d_sig < -1e-7
+          try
+            chol(Psig + thresh * speye(obj.n), 'lower');
+            obj.non_convex = true;
+          catch
             error('OSQP:NonConvex', ...
               'P is non-convex and sigma is too small: P+sigma*I is not PSD.');
           end
-          obj.non_convex = true;
-        else
-          obj.non_convex = false;
         end
       else
         obj.non_convex = false;
@@ -216,7 +218,8 @@ classdef OSQP < handle
 
       % ---- Factorize KKT matrix ----
       obj.kkt_factor = OSQP.factorize_kkt( ...
-        obj.Ps, obj.As, obj.rho_vec, obj.settings.sigma, obj.n, obj.m);
+        obj.Ps, obj.As, obj.rho_vec, obj.settings.sigma, obj.n, obj.m, ...
+        obj.settings.linear_solver);
 
       obj.isSetup = true;
       obj.setup_time = toc(t_start);
@@ -363,7 +366,8 @@ classdef OSQP < handle
               [obj.rho_vec, obj.rho_inv_vec] = OSQP.make_rho_vec( ...
                 obj.constr_type, new_rho, obj.m);
               obj.kkt_factor = OSQP.factorize_kkt( ...
-                obj.Ps, obj.As, obj.rho_vec, s.sigma, obj.n, obj.m);
+                obj.Ps, obj.As, obj.rho_vec, s.sigma, obj.n, obj.m, ...
+                obj.settings.linear_solver);
               rho_updates = rho_updates + 1;
             end
           end
@@ -596,7 +600,8 @@ classdef OSQP < handle
         [obj.scl, obj.Ps, obj.qs, obj.As, obj.ls, obj.us] = ...
           OSQP.scale_problem(obj.P_triu, obj.q, obj.A, obj.l, obj.u, obj.settings);
         obj.kkt_factor = OSQP.factorize_kkt( ...
-          obj.Ps, obj.As, obj.rho_vec, obj.settings.sigma, obj.n, obj.m);
+          obj.Ps, obj.As, obj.rho_vec, obj.settings.sigma, obj.n, obj.m, ...
+          obj.settings.linear_solver);
       else
         % Only q changed; just recompute scaled q: qs = c * D * q
         obj.qs = obj.scl.c * (obj.scl.D .* obj.q);
@@ -651,7 +656,8 @@ classdef OSQP < handle
         [obj.rho_vec, obj.rho_inv_vec] = OSQP.make_rho_vec( ...
           obj.constr_type, obj.settings.rho, obj.m);
         obj.kkt_factor = OSQP.factorize_kkt( ...
-          obj.Ps, obj.As, obj.rho_vec, obj.settings.sigma, obj.n, obj.m);
+          obj.Ps, obj.As, obj.rho_vec, obj.settings.sigma, obj.n, obj.m, ...
+          obj.settings.linear_solver);
       end
     end
 
@@ -739,6 +745,7 @@ classdef OSQP < handle
       s.check_termination     = 25;
       s.warm_start            = true;
       s.time_limit            = 1e10;
+      s.linear_solver         = 'matlab_ldl'; % 'qdldl' | 'matlab_ldl'
     end
 
     function v = version()
@@ -889,29 +896,22 @@ classdef OSQP < handle
         % Compute column norms of [P; A] and row norms of [A]
         % For symmetric P we use the max of row/col norms
         if n > 0
-          % inf-norm of each col of D*P*D and D*A (combined)
-          PD  = Pfull * diag(sparse(D));
-          PDE = PD  * diag(sparse(D));  % D*P*D scaled
-          AD  = A * diag(sparse(D));     % A*D
-          % Column norms: max over P cols + A cols
-          for j = 1:n
-            pnorm = norm(PDE(:, j), inf);
-            anorm = norm(AD(:, j), inf);
-            combined = max(pnorm, anorm);
-            if combined > 0
-              D(j) = D(j) / sqrt(combined);
-            end
-          end
+          % Vectorised inf-norms of each column of D*P*D and A*D
+          Dsp = spdiags(D, 0, n, n);
+          PDE = Dsp * Pfull * Dsp;              % symmetric D*P*D scaling
+          AD  = A * Dsp;                         % A*D column scaling
+          combined = max(full(max(abs(PDE)))', full(max(abs(AD)))');   % n×1
+          pos = combined > 0;
+          D(pos) = D(pos) ./ sqrt(combined(pos));
         end
         if m > 0
-          % Row norms of E*A*D
-          EAD = diag(sparse(E)) * A * diag(sparse(D));
-          for i = 1:m
-            rnorm = norm(EAD(i, :), inf);
-            if rnorm > 0
-              E(i) = E(i) / sqrt(rnorm);
-            end
-          end
+          % Vectorised inf-norms of each row of E*A*D
+          Dsp = spdiags(D, 0, n, n);
+          Esp = spdiags(E, 0, m, m);
+          EAD = Esp * A * Dsp;
+          EAD_norms = full(max(abs(EAD), [], 2));   % m×1
+          pos = EAD_norms > 0;
+          E(pos) = E(pos) ./ sqrt(EAD_norms(pos));
         end
         % Cost scaling: scale by mean of D'*P_diag*D norms
         DPD = D' .* diag(sparse(Pfull))' .* D';
@@ -954,10 +954,17 @@ classdef OSQP < handle
       scl.cinv = cinv;
     end
 
-    function F = factorize_kkt(P_triu, A, rho_vec, sigma, n, m)
+    function F = factorize_kkt(P_triu, A, rho_vec, sigma, n, m, linear_solver)
       % FACTORIZE_KKT  Factor the (n+m) x (n+m) KKT matrix:
       %   K = [P + sigma*I,  A';  A, -diag(1./rho_vec)]
-      % This is quasi-definite and can be factored by QDLDL.
+      % This is quasi-definite.
+      %
+      %   linear_solver: 'qdldl' (pure-MATLAB QDLDL) or
+      %                  'matlab_ldl' (MATLAB built-in ldl, faster)
+
+      if nargin < 7 || isempty(linear_solver)
+        linear_solver = 'matlab_ldl';
+      end
 
       Pfull = P_triu + P_triu' - diag(diag(P_triu));
       Ktl   = Pfull + sigma * speye(n);   % top-left block
@@ -970,7 +977,12 @@ classdef OSQP < handle
       end
 
       K = (K + K') / 2;  % ensure exact symmetry
-      F = qdldl(triu(K), 'perm', 'auto');
+
+      if strcmp(linear_solver, 'matlab_ldl')
+        F = MATLABLDLFactorization(K);
+      else
+        F = qdldl(triu(K), 'perm', 'auto');
+      end
     end
 
     function z_proj = project_box(z, l, u)
