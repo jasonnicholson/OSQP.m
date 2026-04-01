@@ -1,20 +1,7 @@
-*.jl.cov
-*.jl.*.cov
-*.jl.mem
-*.swp
-*.DS_Store
-deps/build.log
 
-# Emacs stuff
-\#*\#
-.\#*
-*~
 
 # vscode
 .vscode/
-
-Manifest.toml
-.editorconfig
 
 
 node_modules/
