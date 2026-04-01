@@ -15,3 +15,8 @@ deps/build.log
 
 Manifest.toml
 .editorconfig
+
+
+node_modules/
+qdldl
+qdldl/
