@@ -1,6 +1,7 @@
-The OSQP.jl package is licensed under the Apache License, Version 2.0:
+The OSQP.m package is licensed under the Apache License, Version 2.0:
 
-Copyright (c) 2017: Bartolomeo Stellato.
+Copyright (c) 2026 Jason H. Nicholson
+Copyright (c) 2017 Bartolomeo Stellato, Baris Stellato, and OSQP contributors
 
                                  Apache License
                            Version 2.0, January 2004

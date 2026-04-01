@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# git-conventional-commits is installed via pnpm in this repo. 
+# use git-conventional-commits, see https://github.com/qoomon/git-conventional-commits
+pnpm exec git-conventional-commits commit-msg-hook "$1"
