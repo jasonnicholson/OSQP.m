@@ -1,0 +1,8 @@
+#ifndef QDLDL_VERSION_H_
+#define QDLDL_VERSION_H_
+
+#define QDLDL_VERSION_MAJOR 1
+#define QDLDL_VERSION_MINOR 0
+#define QDLDL_VERSION_PATCH 0
+
+#endif

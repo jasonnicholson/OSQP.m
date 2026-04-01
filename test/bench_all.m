@@ -1,7 +1,4 @@
-% bench_all.m — Compare three QDLDL/LDL configurations:
-%   (A) Original QDLDL (manual scalar loops for both factorize + solve)
-%   (B) Optimised QDLDL (vectorised factor loop + sparse matrix solve)
-%   (C) MATLAB built-in ldl() (MATLABLDLFactorization)
+% bench_all.m — Compare available OSQP linear solver backends.
 
 repoRoot = fileparts(fileparts(mfilename('fullpath')));
 addpath(fullfile(repoRoot, 'src'), fullfile(repoRoot, 'qdldl', 'src'));
@@ -12,12 +9,16 @@ nrep8 = 10;
 
 configs = {'qdldl', 'matlab_ldl'};
 labels  = {'Optimised QDLDL', 'MATLAB ldl()'};
+if exist(['qdldl_c_factor_mex.' mexext], 'file') == 3
+    configs = {'qdldl', 'qdldl_c', 'matlab_ldl'};
+    labels  = {'Optimised QDLDL', 'QDLDL C MEX', 'MATLAB ldl()'};
+end
 nc = numel(configs);
 
 total_ms = zeros(1, nc);
 
 fprintf('\n================================================\n');
-fprintf('  OSQP.m — Three-way Speed Comparison\n');
+fprintf('  OSQP.m — Linear Solver Speed Comparison\n');
 fprintf('================================================\n');
 fprintf('  %-35s', 'Example');
 for c = 1:nc

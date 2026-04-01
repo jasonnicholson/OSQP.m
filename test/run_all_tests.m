@@ -22,6 +22,10 @@ testFiles = {
     'test_update_matrices'
 };
 
+if exist(['qdldl_c_factor_mex.' mexext], 'file') == 3
+    testFiles{end + 1} = 'test_qdldl_c';
+end
+
 results = matlab.unittest.TestResult.empty;
 
 for k = 1:numel(testFiles)

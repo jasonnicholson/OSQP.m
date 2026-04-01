@@ -745,7 +745,7 @@ classdef OSQP < handle
       s.check_termination     = 25;
       s.warm_start            = true;
       s.time_limit            = 1e10;
-      s.linear_solver         = 'matlab_ldl'; % 'qdldl' | 'matlab_ldl'
+      s.linear_solver         = 'matlab_ldl'; % 'qdldl' | 'qdldl_c' | 'matlab_ldl'
     end
 
     function v = version()
@@ -959,8 +959,9 @@ classdef OSQP < handle
       %   K = [P + sigma*I,  A';  A, -diag(1./rho_vec)]
       % This is quasi-definite.
       %
-      %   linear_solver: 'qdldl' (pure-MATLAB QDLDL) or
-      %                  'matlab_ldl' (MATLAB built-in ldl, faster)
+      %   linear_solver: 'qdldl' (pure-MATLAB QDLDL),
+      %                  'qdldl_c' (upstream C QDLDL via MEX), or
+      %                  'matlab_ldl' (MATLAB built-in ldl, fastest pure MATLAB)
 
       if nargin < 7 || isempty(linear_solver)
         linear_solver = 'matlab_ldl';
@@ -980,6 +981,12 @@ classdef OSQP < handle
 
       if strcmp(linear_solver, 'matlab_ldl')
         F = MATLABLDLFactorization(K);
+      elseif strcmp(linear_solver, 'qdldl_c')
+        mexName = ['qdldl_c_factor_mex.' mexext];
+        if exist(mexName, 'file') ~= 3
+          build_qdldl_c_mex();
+        end
+        F = QDLDLCFactorization(triu(K), 'auto');
       else
         F = qdldl(triu(K), 'perm', 'auto');
       end

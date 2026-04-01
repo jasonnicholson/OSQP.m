@@ -7,6 +7,10 @@
 repoRoot = fileparts(fileparts(mfilename('fullpath')));
 addpath(fullfile(repoRoot, 'src'), fullfile(repoRoot, 'qdldl', 'src'));
 
+if ~exist('linear_solver', 'var') || isempty(linear_solver)
+    linear_solver = 'matlab_ldl';
+end
+
 tol = 2e-3;  % tolerance for comparing solutions (ADMM default eps=1e-3)
 all_pass = true;
 
@@ -25,7 +29,7 @@ l = [1; 0; 0];
 u = [1; 0.7; 0.7];
 
 prob = OSQP();
-prob.setup(P, q, A, l, u, 'alpha', 1.0, 'verbose', false);
+prob.setup(P, q, A, l, u, 'alpha', 1.0, 'verbose', false, 'linear_solver', linear_solver);
 res = prob.solve();
 
 ref_x = [0.29877108; 0.70122892];
@@ -49,7 +53,7 @@ fprintf('\n');
 %% ============================================================
 fprintf('--- Example 2: Update Vectors ---\n');
 prob2 = OSQP();
-prob2.setup(P, q, A, l, u, 'verbose', false);
+prob2.setup(P, q, A, l, u, 'verbose', false, 'linear_solver', linear_solver);
 res2a = prob2.solve();
 
 fprintf('  Before update: x=[%.6f, %.6f], obj=%.6f\n', ...
@@ -81,7 +85,7 @@ fprintf('\n');
 %% ============================================================
 fprintf('--- Example 3: Update Matrices ---\n');
 prob3 = OSQP();
-prob3.setup(P, q, A, l, u, 'verbose', false);
+prob3.setup(P, q, A, l, u, 'verbose', false, 'linear_solver', linear_solver);
 res3a = prob3.solve();
 
 P_new = sparse([5, 1.5; 1.5, 1]);
@@ -122,7 +126,7 @@ l_ls = [b_ls; zeros(n_ls, 1)];
 u_ls = [b_ls; ones(n_ls, 1)];
 
 prob4 = OSQP();
-prob4.setup(P_ls, q_ls, A_ls, l_ls, u_ls, 'verbose', false);
+prob4.setup(P_ls, q_ls, A_ls, l_ls, u_ls, 'verbose', false, 'linear_solver', linear_solver);
 res4 = prob4.solve();
 
 fprintf('  Status : %s\n', res4.info.status);
@@ -200,7 +204,7 @@ l_mpc = [leq; lineq];
 u_mpc = [ueq; uineq];
 
 prob5 = OSQP();
-prob5.setup(P_mpc, q_mpc, A_mpc_full, l_mpc, u_mpc, 'warm_start', true, 'verbose', false);
+prob5.setup(P_mpc, q_mpc, A_mpc_full, l_mpc, u_mpc, 'warm_start', true, 'verbose', false, 'linear_solver', linear_solver);
 
 nsim = 15;
 x0_sim = zeros(12, 1);
@@ -257,7 +261,7 @@ l_hub = [b_hub; zeros(2*m_hub, 1)];
 u_hub = [b_hub; inf*ones(2*m_hub, 1)];
 
 prob6 = OSQP();
-prob6.setup(P_hub, q_hub, A_hub, l_hub, u_hub, 'verbose', false);
+prob6.setup(P_hub, q_hub, A_hub, l_hub, u_hub, 'verbose', false, 'linear_solver', linear_solver);
 res6 = prob6.solve();
 
 fprintf('  Status : %s\n', res6.info.status);
@@ -294,7 +298,7 @@ l_svm = [-inf*ones(m_svm, 1); zeros(m_svm, 1)];
 u_svm = [-ones(m_svm, 1); inf*ones(m_svm, 1)];
 
 prob7 = OSQP();
-prob7.setup(P_svm, q_svm, A_svm, l_svm, u_svm, 'verbose', false);
+prob7.setup(P_svm, q_svm, A_svm, l_svm, u_svm, 'verbose', false, 'linear_solver', linear_solver);
 res7 = prob7.solve();
 
 fprintf('  Status : %s\n', res7.info.status);
@@ -329,7 +333,7 @@ l_la = [b_la; -inf*ones(n_la, 1); zeros(n_la, 1)];
 u_la = [b_la; zeros(n_la, 1); inf*ones(n_la, 1)];
 
 prob8 = OSQP();
-prob8.setup(P_la, q_la, A_la, l_la, u_la, 'warm_start', true, 'verbose', false);
+prob8.setup(P_la, q_la, A_la, l_la, u_la, 'warm_start', true, 'verbose', false, 'linear_solver', linear_solver);
 
 lasso_ok = true;
 for i = 1:length(gammas)
