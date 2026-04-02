@@ -961,9 +961,8 @@ classdef OSQP < handle
       %
       %   linear_solver: 'qdldl' (pure-MATLAB QDLDL),
       %                  'qdldl_c' (upstream C QDLDL via MEX),
-      %                  'pardiso_mkl' (Intel oneMKL Pardiso via MEX),
-      %                  'matlab_ldl' (MATLAB built-in ldl, fastest pure MATLAB), or
-      %                  'matlab_linsolve' (ldl + linsolve opts — for benchmarking)
+      %                  'pardiso_mkl' (Intel oneMKL Pardiso via MEX), or
+      %                  'matlab_ldl' (MATLAB built-in ldl, fastest pure MATLAB)
 
       if nargin < 7 || isempty(linear_solver)
         linear_solver = 'matlab_ldl';
@@ -983,8 +982,6 @@ classdef OSQP < handle
 
       if strcmp(linear_solver, 'matlab_ldl')
         F = MATLABLDLFactorization(K);
-      elseif strcmp(linear_solver, 'matlab_linsolve')
-        F = LinsolveFactorization(K);
       elseif strcmp(linear_solver, 'pardiso_mkl')
         mexName = ['pardiso_mkl_mex.' mexext];
         if exist(mexName, 'file') ~= 3
