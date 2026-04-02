@@ -745,7 +745,7 @@ classdef OSQP < handle
       s.check_termination     = 25;
       s.warm_start            = true;
       s.time_limit            = 1e10;
-      s.linear_solver         = 'matlab_ldl'; % 'qdldl' | 'qdldl_c' | 'matlab_ldl'
+      s.linear_solver         = 'matlab_ldl'; % 'qdldl' | 'qdldl_c' | 'pardiso_mkl' | 'matlab_ldl'
     end
 
     function v = version()
@@ -960,7 +960,8 @@ classdef OSQP < handle
       % This is quasi-definite.
       %
       %   linear_solver: 'qdldl' (pure-MATLAB QDLDL),
-      %                  'qdldl_c' (upstream C QDLDL via MEX), or
+      %                  'qdldl_c' (upstream C QDLDL via MEX),
+      %                  'pardiso_mkl' (Intel oneMKL Pardiso via MEX), or
       %                  'matlab_ldl' (MATLAB built-in ldl, fastest pure MATLAB)
 
       if nargin < 7 || isempty(linear_solver)
@@ -981,6 +982,12 @@ classdef OSQP < handle
 
       if strcmp(linear_solver, 'matlab_ldl')
         F = MATLABLDLFactorization(K);
+      elseif strcmp(linear_solver, 'pardiso_mkl')
+        mexName = ['pardiso_mkl_mex.' mexext];
+        if exist(mexName, 'file') ~= 3
+          build_pardiso_mkl_mex();
+        end
+        F = PARDISOMKLFactorization(K);
       elseif strcmp(linear_solver, 'qdldl_c')
         mexName = ['qdldl_c_factor_mex.' mexext];
         if exist(mexName, 'file') ~= 3

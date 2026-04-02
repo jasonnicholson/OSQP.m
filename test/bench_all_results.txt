@@ -1,0 +1,17 @@
+================================================
+  OSQP.m — Linear Solver Speed Comparison
+================================================
+  Example                              Optimised QDLDL      QDLDL C MEX     MATLAB ldl()
+  --------------------------------------------------------------------------------------
+  Ex1: Setup+Solve (2×2)                       5.08 ms          5.15 ms          3.58 ms
+  Ex2: Update Vectors                          9.97 ms         10.88 ms          8.45 ms
+  Ex3: Update Matrices                        11.42 ms          8.65 ms          7.39 ms
+  Ex4: Least Squares (50 vars)                29.09 ms          6.03 ms          5.26 ms
+  Ex5: MPC (172 vars, 15 steps)             2485.57 ms        130.01 ms         71.14 ms
+  Ex6: Huber (310 vars)                      209.39 ms         13.88 ms          5.02 ms
+  Ex7: SVM (1010 vars)                     46792.93 ms       2947.90 ms         50.36 ms
+  Ex8: Lasso (1020v, 11 solves)            17506.57 ms        772.87 ms         75.62 ms
+  --------------------------------------------------------------------------------------
+  Total (sum of medians)                   67050.00 ms       3895.37 ms        226.83 ms
+  vs. Python osqp 1.1.1 (C-backed)           1214.0x slower          70.5x slower           4.1x slower
+================================================

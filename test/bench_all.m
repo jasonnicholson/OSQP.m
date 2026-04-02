@@ -13,6 +13,15 @@ if exist(['qdldl_c_factor_mex.' mexext], 'file') == 3
     configs = {'qdldl', 'qdldl_c', 'matlab_ldl'};
     labels  = {'Optimised QDLDL', 'QDLDL C MEX', 'MATLAB ldl()'};
 end
+if exist(['pardiso_mkl_mex.' mexext], 'file') == 3
+    if exist(['qdldl_c_factor_mex.' mexext], 'file') == 3
+        configs = {'qdldl', 'qdldl_c', 'pardiso_mkl', 'matlab_ldl'};
+        labels  = {'Optimised QDLDL', 'QDLDL C MEX', 'Pardiso MKL', 'MATLAB ldl()'};
+    else
+        configs = {'qdldl', 'pardiso_mkl', 'matlab_ldl'};
+        labels  = {'Optimised QDLDL', 'Pardiso MKL', 'MATLAB ldl()'};
+    end
+end
 nc = numel(configs);
 
 total_ms = zeros(1, nc);
