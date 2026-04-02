@@ -1,8 +1,9 @@
-% profile_compare_quick.m — Quick benchmark/profile loop for qdldl vs matlab_ldl
+% profile_compare_quick.m — Quick benchmark/profile loop comparing matlab_ldl
+%   (manual LDL via ldl()) vs matlab_decomp (MATLAB decomposition() object).
 %
 % Intended for interactive MATLAB use when iterating on the pure-MATLAB
 % implementation. By default this script:
-%   1. benchmarks qdldl and matlab_ldl on the MPC workload,
+%   1. benchmarks matlab_ldl and matlab_decomp on the MPC workload,
 %   2. profiles both backends on the same workload,
 %   3. keeps total runtime around 30-60 seconds on the current machine.
 %
@@ -11,9 +12,9 @@
 %
 % Optional overrides before running:
 %   bench_reps = 150;
-%   profile_reps_qdldl = 20;
 %   profile_reps_matlab_ldl = 80;
-%   profile_backends = {'qdldl', 'matlab_ldl'};
+%   profile_reps_matlab_decomp = 80;
+%   profile_backends = {'matlab_ldl', 'matlab_decomp'};
 %   open_profiler_viewer = true;
 
 repoRoot = fileparts(fileparts(mfilename('fullpath')));
@@ -22,14 +23,14 @@ addpath(fullfile(repoRoot, 'src'), fullfile(repoRoot, 'qdldl', 'src'));
 if ~exist('bench_reps', 'var') || isempty(bench_reps)
     bench_reps = 150;
 end
-if ~exist('profile_reps_qdldl', 'var') || isempty(profile_reps_qdldl)
-    profile_reps_qdldl = 20;
-end
 if ~exist('profile_reps_matlab_ldl', 'var') || isempty(profile_reps_matlab_ldl)
     profile_reps_matlab_ldl = 80;
 end
+if ~exist('profile_reps_matlab_decomp', 'var') || isempty(profile_reps_matlab_decomp)
+    profile_reps_matlab_decomp = 80;
+end
 if ~exist('profile_backends', 'var') || isempty(profile_backends)
-    profile_backends = {'qdldl', 'matlab_ldl'};
+    profile_backends = {'matlab_ldl', 'matlab_decomp'};
 end
 if ~exist('open_profiler_viewer', 'var') || isempty(open_profiler_viewer)
     open_profiler_viewer = usejava('desktop');
@@ -38,28 +39,28 @@ end
 [P,q,A,l,u,nx,nu,N,Ad,Bd] = build_mpc_data();
 
 fprintf('\n============================================================\n');
-fprintf('  OSQP.m Quick Compare — MPC workload\n');
+fprintf('  OSQP.m decomposition() vs ldl() — MPC workload\n');
 fprintf('============================================================\n');
 fprintf('  bench_reps               : %d\n', bench_reps);
-fprintf('  profile_reps_qdldl       : %d\n', profile_reps_qdldl);
 fprintf('  profile_reps_matlab_ldl  : %d\n', profile_reps_matlab_ldl);
+fprintf('  profile_reps_matlab_decomp : %d\n', profile_reps_matlab_decomp);
 fprintf('  profile_backends         : %s\n', strjoin(profile_backends, ', '));
 
-bench_qdldl = bench_backend('qdldl', bench_reps, P,q,A,l,u,nx,nu,N,Ad,Bd);
-bench_ldl   = bench_backend('matlab_ldl', bench_reps, P,q,A,l,u,nx,nu,N,Ad,Bd);
+bench_ldl   = bench_backend('matlab_ldl',   bench_reps, P,q,A,l,u,nx,nu,N,Ad,Bd);
+bench_decomp = bench_backend('matlab_decomp', bench_reps, P,q,A,l,u,nx,nu,N,Ad,Bd);
 
 fprintf('\nBenchmark summary (median over %d runs)\n', bench_reps);
-fprintf('  %-12s %10.2f ms\n', 'qdldl', bench_qdldl.median_ms);
-fprintf('  %-12s %10.2f ms\n', 'matlab_ldl', bench_ldl.median_ms);
-fprintf('  %-12s %10.2f x\n', 'speedup', bench_qdldl.median_ms / bench_ldl.median_ms);
+fprintf('  %-14s %10.2f ms\n', 'matlab_ldl', bench_ldl.median_ms);
+fprintf('  %-14s %10.2f ms\n', 'matlab_decomp', bench_decomp.median_ms);
+fprintf('  %-14s %10.2f x (ldl/decomp)\n', 'ratio', bench_ldl.median_ms / bench_decomp.median_ms);
 
 profile_results = struct();
 for k = 1:numel(profile_backends)
     backend = profile_backends{k};
-    if strcmp(backend, 'qdldl')
-        nprof = profile_reps_qdldl;
-    elseif strcmp(backend, 'matlab_ldl')
+    if strcmp(backend, 'matlab_ldl')
         nprof = profile_reps_matlab_ldl;
+    elseif strcmp(backend, 'matlab_decomp')
+        nprof = profile_reps_matlab_decomp;
     else
         error('Unknown backend: %s', backend);
     end
@@ -75,13 +76,13 @@ for k = 1:numel(profile_backends)
     end
 end
 
-assignin('base', 'quick_compare_bench_qdldl', bench_qdldl);
-assignin('base', 'quick_compare_bench_matlab_ldl', bench_ldl);
+assignin('base', 'quick_compare_bench_matlab_ldl',   bench_ldl);
+assignin('base', 'quick_compare_bench_matlab_decomp', bench_decomp);
 assignin('base', 'quick_compare_profile_results', profile_results);
 
 fprintf('\nSaved variables in base workspace:\n');
-fprintf('  quick_compare_bench_qdldl\n');
 fprintf('  quick_compare_bench_matlab_ldl\n');
+fprintf('  quick_compare_bench_matlab_decomp\n');
 fprintf('  quick_compare_profile_results\n');
 fprintf('============================================================\n');
 
