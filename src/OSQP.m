@@ -727,7 +727,6 @@ classdef OSQP < handle
       s.rho                   = 0.1;
       s.sigma                 = 1e-6;
       s.scaling               = 10;
-      s.scaling_method        = 'ruiz'; % 'ruiz' | 'equilibrate'
       s.adaptive_rho          = true;
       s.adaptive_rho_interval = 0;
       s.adaptive_rho_tolerance = 5;
@@ -864,15 +863,11 @@ classdef OSQP < handle
     end
 
     function [scl, Ps, qs, As, ls, us] = scale_problem(P_triu, q, A, l, u, settings)
-      % SCALE_PROBLEM  Apply problem scaling.
+      % SCALE_PROBLEM  Apply Ruiz equilibration scaling.
       n = size(P_triu, 1);
       m = size(A, 1);
 
       num_iter = settings.scaling;
-      scaling_method = 'ruiz';
-      if isfield(settings, 'scaling_method')
-        scaling_method = lower(string(settings.scaling_method));
-      end
 
       D    = ones(n, 1);
       E    = ones(m, 1);
@@ -897,84 +892,35 @@ classdef OSQP < handle
       % Symmetrize P for norm computations
       Pfull = P_triu + P_triu' - diag(diag(P_triu));
 
-      if scaling_method == "equilibrate"
-        % Build a square KKT-like matrix and use MATLAB's equilibrate to
-        % get diagonal scaling magnitudes for primal/constraint blocks.
-        try
-          if n > 0 || m > 0
-            Ktl = Pfull + settings.sigma * speye(n);
-            rho_for_scale = max(settings.rho, 1e-12);
-            Kbr = -spdiags((1 ./ rho_for_scale) * ones(m, 1), 0, m, m);
-            K = [Ktl, A'; A, Kbr];
-            [~, ~, Ck] = equilibrate(K, "vector");
-            Ck = full(Ck(:));
-            if numel(Ck) ~= (n + m)
-              error('OSQP:Scaling', 'equilibrate returned unexpected scaling size.');
-            end
-            if n > 0
-              D = Ck(1:n);
-            end
-            if m > 0
-              E = Ck(n+1:end);
-            end
-          end
-        catch ME
-          warning('OSQP:ScalingEquilibrateFallback', ...
-            'equilibrate scaling failed (%s). Falling back to Ruiz scaling.', ME.message);
-          scaling_method = "ruiz";
+      for iter_s = 1:num_iter
+        % Compute column norms of [P; A] and row norms of [A]
+        % For symmetric P we use the max of row/col norms
+        if n > 0
+          % Vectorised inf-norms of each column of D*P*D and A*D
+          Dsp = spdiags(D, 0, n, n);
+          PDE = Dsp * Pfull * Dsp;              % symmetric D*P*D scaling
+          AD  = A * Dsp;                         % A*D column scaling
+          combined = max(full(max(abs(PDE)))', full(max(abs(AD)))');   % n×1
+          pos = combined > 0;
+          D(pos) = D(pos) ./ sqrt(combined(pos));
         end
-
-        D(~isfinite(D) | D <= 0) = 1;
-        E(~isfinite(E) | E <= 0) = 1;
-
-        % Keep the cost normalization from the Ruiz path so objective
-        % magnitudes remain comparable.
-        if scaling_method == "equilibrate" && n > 0
-          DPD = D' .* diag(sparse(Pfull))' .* D';
-          mean_norm = mean(abs(DPD));
-          q_norms   = abs(q .* D);
-          cost_scale = max(mean_norm, mean(q_norms));
-          if cost_scale > 0
-            c = 1 / sqrt(cost_scale);
-          end
+        if m > 0
+          % Vectorised inf-norms of each row of E*A*D
+          Dsp = spdiags(D, 0, n, n);
+          Esp = spdiags(E, 0, m, m);
+          EAD = Esp * A * Dsp;
+          EAD_norms = full(max(abs(EAD), [], 2));   % m×1
+          pos = EAD_norms > 0;
+          E(pos) = E(pos) ./ sqrt(EAD_norms(pos));
         end
-
-      end
-
-      if scaling_method == "ruiz"
-
-        for iter_s = 1:num_iter
-          % Compute column norms of [P; A] and row norms of [A]
-          % For symmetric P we use the max of row/col norms
-          if n > 0
-            % Vectorised inf-norms of each column of D*P*D and A*D
-            Dsp = spdiags(D, 0, n, n);
-            PDE = Dsp * Pfull * Dsp;              % symmetric D*P*D scaling
-            AD  = A * Dsp;                         % A*D column scaling
-            combined = max(full(max(abs(PDE)))', full(max(abs(AD)))');   % n×1
-            pos = combined > 0;
-            D(pos) = D(pos) ./ sqrt(combined(pos));
-          end
-          if m > 0
-            % Vectorised inf-norms of each row of E*A*D
-            Dsp = spdiags(D, 0, n, n);
-            Esp = spdiags(E, 0, m, m);
-            EAD = Esp * A * Dsp;
-            EAD_norms = full(max(abs(EAD), [], 2));   % m×1
-            pos = EAD_norms > 0;
-            E(pos) = E(pos) ./ sqrt(EAD_norms(pos));
-          end
-          % Cost scaling: scale by mean of D'*P_diag*D norms
-          DPD = D' .* diag(sparse(Pfull))' .* D';
-          mean_norm = mean(abs(DPD));
-          q_norms   = abs(q .* D);
-          cost_scale = max(mean_norm, mean(q_norms));
-          if cost_scale > 0
-            c = c / sqrt(cost_scale);
-          end
+        % Cost scaling: scale by mean of D'*P_diag*D norms
+        DPD = D' .* diag(sparse(Pfull))' .* D';
+        mean_norm = mean(abs(DPD));
+        q_norms   = abs(q .* D);
+        cost_scale = max(mean_norm, mean(q_norms));
+        if cost_scale > 0
+          c = c / sqrt(cost_scale);
         end
-      elseif scaling_method ~= "equilibrate"
-        error('OSQP:Scaling', 'Unknown scaling_method: %s', char(scaling_method));
       end
 
       % Clip scaling vectors
