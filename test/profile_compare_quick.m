@@ -9,33 +9,24 @@
 % Usage from the project root:
 %   run('test/profile_compare_quick.m')
 %
-% Optional overrides before running:
-%   bench_reps = 150;
-%   profile_reps_qdldl = 20;
-%   profile_reps_matlab_ldl = 80;
-%   profile_backends = {'qdldl', 'matlab_ldl'};
-%   open_profiler_viewer = true;
 
-repoRoot = fileparts(fileparts(mfilename('fullpath')));
-addpath(fullfile(repoRoot, 'src'), fullfile(repoRoot, 'qdldl', 'src'));
+% Configuration (edit directly before running):
+bench_reps = 150;
+profile_reps_qdldl = 0;
+profile_reps_matlab_ldl = 300;
+% profile_backends = {'qdldl', 'matlab_ldl'};
+profile_backends = {'matlab_ldl'};
+scaling_method = {'ruiz', 'equilibrate'};
+open_profiler_viewer = usejava('desktop');
 
-if ~exist('bench_reps', 'var') || isempty(bench_reps)
-    bench_reps = 150;
-end
-if ~exist('profile_reps_qdldl', 'var') || isempty(profile_reps_qdldl)
-    profile_reps_qdldl = 20;
-end
-if ~exist('profile_reps_matlab_ldl', 'var') || isempty(profile_reps_matlab_ldl)
-    profile_reps_matlab_ldl = 80;
-end
-if ~exist('profile_backends', 'var') || isempty(profile_backends)
-    profile_backends = {'qdldl', 'matlab_ldl'};
-end
-if ~exist('open_profiler_viewer', 'var') || isempty(open_profiler_viewer)
-    open_profiler_viewer = usejava('desktop');
-end
 
 [P,q,A,l,u,nx,nu,N,Ad,Bd] = build_mpc_data();
+
+if iscell(scaling_method)
+    scaling_methods = scaling_method;
+else
+    scaling_methods = {scaling_method};
+end
 
 fprintf('\n============================================================\n');
 fprintf('  OSQP.m Quick Compare — MPC workload\n');
@@ -44,53 +35,69 @@ fprintf('  bench_reps               : %d\n', bench_reps);
 fprintf('  profile_reps_qdldl       : %d\n', profile_reps_qdldl);
 fprintf('  profile_reps_matlab_ldl  : %d\n', profile_reps_matlab_ldl);
 fprintf('  profile_backends         : %s\n', strjoin(profile_backends, ', '));
+fprintf('  scaling_method(s)        : %s\n', strjoin(string(scaling_methods), ', '));
 
-bench_qdldl = bench_backend('qdldl', bench_reps, P,q,A,l,u,nx,nu,N,Ad,Bd);
-bench_ldl   = bench_backend('matlab_ldl', bench_reps, P,q,A,l,u,nx,nu,N,Ad,Bd);
+quick_compare_by_scaling = struct();
+for sm = 1:numel(scaling_methods)
+    scaling_method_i = char(string(scaling_methods{sm}));
+    fprintf('\n------------------------------------------------------------\n');
+    fprintf('Scaling method: %s\n', scaling_method_i);
 
-fprintf('\nBenchmark summary (median over %d runs)\n', bench_reps);
-fprintf('  %-12s %10.2f ms\n', 'qdldl', bench_qdldl.median_ms);
-fprintf('  %-12s %10.2f ms\n', 'matlab_ldl', bench_ldl.median_ms);
-fprintf('  %-12s %10.2f x\n', 'speedup', bench_qdldl.median_ms / bench_ldl.median_ms);
+    bench_qdldl = bench_backend('qdldl', bench_reps, scaling_method_i, P,q,A,l,u,nx,nu,N,Ad,Bd);
+    bench_ldl   = bench_backend('matlab_ldl', bench_reps, scaling_method_i, P,q,A,l,u,nx,nu,N,Ad,Bd);
 
-profile_results = struct();
-for k = 1:numel(profile_backends)
-    backend = profile_backends{k};
-    if strcmp(backend, 'qdldl')
-        nprof = profile_reps_qdldl;
-    elseif strcmp(backend, 'matlab_ldl')
-        nprof = profile_reps_matlab_ldl;
-    else
-        error('Unknown backend: %s', backend);
+    fprintf('Benchmark summary (median over %d runs)\n', bench_reps);
+    fprintf('  %-12s %10.2f ms\n', 'qdldl', bench_qdldl.median_ms);
+    fprintf('  %-12s %10.2f ms\n', 'matlab_ldl', bench_ldl.median_ms);
+    fprintf('  %-12s %10.2f x\n', 'speedup', bench_qdldl.median_ms / bench_ldl.median_ms);
+
+    profile_results = struct();
+    for k = 1:numel(profile_backends)
+        backend = profile_backends{k};
+        if strcmp(backend, 'qdldl')
+            nprof = profile_reps_qdldl;
+        elseif strcmp(backend, 'matlab_ldl')
+            nprof = profile_reps_matlab_ldl;
+        else
+            error('Unknown backend: %s', backend);
+        end
+
+        fprintf('\nProfiling %s for %d runs...\n', backend, nprof);
+        pdata = profile_backend(backend, nprof, scaling_method_i, P,q,A,l,u,nx,nu,N,Ad,Bd);
+        profile_results.(backend) = pdata;
+        print_top_functions(pdata, backend, 15);
+
+        if open_profiler_viewer
+            profview(0, pdata);
+            fprintf('  Opened MATLAB profiler viewer for %s (%s).\n', backend, scaling_method_i);
+        end
     end
 
-    fprintf('\nProfiling %s for %d runs...\n', backend, nprof);
-    pdata = profile_backend(backend, nprof, P,q,A,l,u,nx,nu,N,Ad,Bd);
-    profile_results.(backend) = pdata;
-    print_top_functions(pdata, backend, 15);
-
-    if open_profiler_viewer
-        profview(0, pdata);
-        fprintf('  Opened MATLAB profiler viewer for %s.\n', backend);
-    end
+    quick_compare_by_scaling.(matlab.lang.makeValidName(scaling_method_i)).bench_qdldl = bench_qdldl;
+    quick_compare_by_scaling.(matlab.lang.makeValidName(scaling_method_i)).bench_matlab_ldl = bench_ldl;
+    quick_compare_by_scaling.(matlab.lang.makeValidName(scaling_method_i)).profile_results = profile_results;
 end
 
-assignin('base', 'quick_compare_bench_qdldl', bench_qdldl);
-assignin('base', 'quick_compare_bench_matlab_ldl', bench_ldl);
-assignin('base', 'quick_compare_profile_results', profile_results);
+assignin('base', 'quick_compare_by_scaling', quick_compare_by_scaling);
+if isfield(quick_compare_by_scaling, 'ruiz')
+    assignin('base', 'quick_compare_bench_qdldl', quick_compare_by_scaling.ruiz.bench_qdldl);
+    assignin('base', 'quick_compare_bench_matlab_ldl', quick_compare_by_scaling.ruiz.bench_matlab_ldl);
+    assignin('base', 'quick_compare_profile_results', quick_compare_by_scaling.ruiz.profile_results);
+end
 
 fprintf('\nSaved variables in base workspace:\n');
-fprintf('  quick_compare_bench_qdldl\n');
-fprintf('  quick_compare_bench_matlab_ldl\n');
-fprintf('  quick_compare_profile_results\n');
+fprintf('  quick_compare_by_scaling\n');
+fprintf('  quick_compare_bench_qdldl (from ruiz, if present)\n');
+fprintf('  quick_compare_bench_matlab_ldl (from ruiz, if present)\n');
+fprintf('  quick_compare_profile_results (from ruiz, if present)\n');
 fprintf('============================================================\n');
 
-function stats = bench_backend(cfg, nrep, P,q,A,l,u,nx,nu,N,Ad,Bd)
+function stats = bench_backend(cfg, nrep, scaling_method, P,q,A,l,u,nx,nu,N,Ad,Bd)
     t = zeros(nrep, 1);
-    run_mpc_rollout(cfg, P,q,A,l,u,nx,nu,N,Ad,Bd);
+    run_mpc_rollout(cfg, scaling_method, P,q,A,l,u,nx,nu,N,Ad,Bd);
     for i = 1:nrep
         tic;
-        run_mpc_rollout(cfg, P,q,A,l,u,nx,nu,N,Ad,Bd);
+        run_mpc_rollout(cfg, scaling_method, P,q,A,l,u,nx,nu,N,Ad,Bd);
         t(i) = toc;
     end
     stats.backend = cfg;
@@ -99,11 +106,11 @@ function stats = bench_backend(cfg, nrep, P,q,A,l,u,nx,nu,N,Ad,Bd)
     stats.mean_ms = mean(t) * 1000;
 end
 
-function pdata = profile_backend(cfg, nrep, P,q,A,l,u,nx,nu,N,Ad,Bd)
+function pdata = profile_backend(cfg, nrep, scaling_method, P,q,A,l,u,nx,nu,N,Ad,Bd)
     profile clear;
     profile on -timer performance;
     for i = 1:nrep
-        run_mpc_rollout(cfg, P,q,A,l,u,nx,nu,N,Ad,Bd);
+        run_mpc_rollout(cfg, scaling_method, P,q,A,l,u,nx,nu,N,Ad,Bd);
     end
     profile off;
     pdata = profile('info');
@@ -128,9 +135,13 @@ function print_top_functions(pdata, backend, top_n)
     end
 end
 
-function run_mpc_rollout(cfg, P,q,A,l,u,nx,nu,N,Ad,Bd)
+function run_mpc_rollout(cfg, scaling_method, P,q,A,l,u,nx,nu,N,Ad,Bd)
     p = OSQP();
-    p.setup(P,q,A,l,u,'warm_start',true,'verbose',false,'linear_solver',cfg);
+    p.setup(P,q,A,l,u, ...
+        'warm_start',true, ...
+        'verbose',false, ...
+        'linear_solver',cfg, ...
+        'scaling_method',scaling_method);
     x0 = zeros(nx,1);
     lt = l;
     ut = u;
