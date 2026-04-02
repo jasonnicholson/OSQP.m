@@ -982,8 +982,6 @@ classdef OSQP < handle
 
       if strcmp(linear_solver, 'matlab_ldl')
         F = MATLABLDLFactorization(K);
-      elseif strcmp(linear_solver, 'matlab_decomp')
-        F = DecompositionLDLFactorization(K);
       elseif strcmp(linear_solver, 'pardiso_mkl')
         mexName = ['pardiso_mkl_mex.' mexext];
         if exist(mexName, 'file') ~= 3
